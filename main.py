@@ -290,18 +290,22 @@ class WindowConciliador(QMainWindow):
     def maximizar_app(self):
         self.show_normal()
         self.minimize_action_triggered = False
-        config.read(f'conciliador.ini', encoding='utf-8')
-        statusLogin = config.get('conciliador', 'login')
-        if statusLogin == "1":
-            window.close()
-            login.txtNumUsuario.setFocus()
-            login.txtNumUsuario.setText("")
-            login.txtUsuario.setCurrentIndex(0)
-            login.txtSenha.setText("")
-            login.lblMessage.setText("")
-            login.show()
-        else:
-            pass
+        try:
+            config.read(f'conciliador.ini', encoding='utf-8')
+            statusLogin = config.get('conciliador', 'login')
+            if statusLogin == "1":
+                window.close()
+                login.txtNumUsuario.setFocus()
+                login.txtNumUsuario.setText("")
+                login.txtUsuario.setCurrentIndex(0)
+                login.txtSenha.setText("")
+                login.lblMessage.setText("")
+                login.show()
+            else:
+                pass
+        except Exception as e:
+            print(e)
+            window.show()
 
     def closeEvent(self, event):
         event.ignore()
@@ -339,7 +343,7 @@ class WindowConciliador(QMainWindow):
             msg = QMessageBox()
             msg.setWindowTitle("Aviso")
             msg.setIcon(QMessageBox.Information)
-            msg.setText("Preencha todos os campos!")
+            msg.setText("Preencha os campos Apartir/Loja")
             msg.exec()
         else:
             conn = ConnectDB(conexaoODBC)
@@ -760,13 +764,15 @@ def enviarJson(date, loja):
 
 app = QApplication(sys.argv)
 window = WindowConciliador()
-config.read(f'conciliador.ini', encoding='utf-8')
-statusLogin = config.get('conciliador', 'login')
-if statusLogin == "1":
-    login = Login()
-    login.show()
-    print('Login habilitado')
-else:
+try:
+    config.read(f'conciliador.ini', encoding='utf-8')
+    statusLogin = config.get('conciliador', 'login')
+    if statusLogin == "1":
+        login = Login()
+        login.show()
+    else:
+        window.show()
+except Exception as e:
+    print(e)
     window.show()
-    print('Login desabilitado')
 sys.exit(app.exec_())

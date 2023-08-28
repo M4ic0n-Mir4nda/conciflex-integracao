@@ -47,6 +47,7 @@ def conectar():
         È necessario criar uma seção no config
         [conciliador]
         conectar='nome da conexão odbc para o servidor'
+        login=0 p/ desabilitar ou 1 p/ habilitar
     """
     try:
         config = configparser.ConfigParser()
