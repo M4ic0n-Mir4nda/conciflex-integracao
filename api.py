@@ -1,13 +1,13 @@
 import json
 import requests
 import os
-from PyQt5.QtCore import QDateTime
+import configparser
 from datetime import datetime, timedelta
 from functions import conectar, verifyDecimalAndHexadecimal
 from connDB import ConnectDB
 
 
-def vendas(data, cnpj, page, lastPage, loja=1):
+def vendas(data, cnpj, token, page, lastPage):
     try:
         print(data)
         conexaoODBC = conectar()
@@ -33,7 +33,6 @@ def vendas(data, cnpj, page, lastPage, loja=1):
             pass
         else:
             os.mkdir(folderData)
-        token = "ae905ef0dda38d31af1243db6257dd54"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -85,8 +84,16 @@ def vendas(data, cnpj, page, lastPage, loja=1):
                             """
                         conn.execute(sql)
                         conn.commit()
+
+                        config = configparser.ConfigParser()
+                        config.read("conciliador.ini")
+                        config["conciliador"]["ult_dados_venda"] = data
+
+                        with open("conciliador.ini", 'w') as configfile:
+                            config.write(configfile)
                     except Exception as e:
                         print(e)
+                        return False
                 dataDictionary = jsonForDictionary['data']
                 dictionaryForJson = json.dumps(dataDictionary, indent=2)
                 with open(f"{folderData}/{f'pagina-{i}'}.json", 'w') as arquivo:
@@ -98,7 +105,7 @@ def vendas(data, cnpj, page, lastPage, loja=1):
         return "Erro na requisição GET:"
 
 
-def pagamentos(data, cnpj, page, lastPage, loja=1):
+def pagamentos(data, cnpj, token, page, lastPage):
     try:
         print(data)
         conexaoODBC = conectar()
@@ -124,7 +131,6 @@ def pagamentos(data, cnpj, page, lastPage, loja=1):
             pass
         else:
             os.mkdir(folderData)
-        token = "ae905ef0dda38d31af1243db6257dd54"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -180,8 +186,16 @@ def pagamentos(data, cnpj, page, lastPage, loja=1):
                             """
                         conn.execute(sql)
                         conn.commit()
+
+                        config = configparser.ConfigParser()
+                        config.read("conciliador.ini")
+                        config["conciliador"]["ult_dados_pagamentos"] = data
+
+                        with open("conciliador.ini", 'w') as configfile:
+                            config.write(configfile)
                     except Exception as e:
                         print(e)
+                        return False
                 dataDictionary = jsonForDictionary['data']
                 dictionaryForJson = json.dumps(dataDictionary, indent=2)
                 with open(f"{folderData}/{f'pagina-{i}'}.json", 'w') as arquivo:
@@ -194,10 +208,10 @@ def pagamentos(data, cnpj, page, lastPage, loja=1):
 
 
 class Api:
-    def __init__(self):
+    def __init__(self, token):
         self.numPage = 1
         self.lastPage = 1
-        self.token = "ae905ef0dda38d31af1243db6257dd54"
+        self.token = token
 
     def enviar_requisicao_post(self, lista):
         # URL da API para enviar as listas
@@ -230,15 +244,27 @@ class Api:
                 mes = data.month
 
                 if mes in [4, 6, 9, 11] and dia <= 30:
-                    vendas(data.strftime('%Y-%m-%d'), cnpj, self.numPage, self.lastPage)
+                    vendas(data.strftime('%Y-%m-%d'), cnpj, self.token, self.numPage, self.lastPage)
                 elif mes != 2 and dia <= 31:
-                    vendas(data.strftime('%Y-%m-%d'), cnpj, self.numPage, self.lastPage)
+                    vendas(data.strftime('%Y-%m-%d'), cnpj, self.token, self.numPage, self.lastPage)
                 elif mes == 2 and dia <= 28:
-                    vendas(data.strftime('%Y-%m-%d'), cnpj, self.numPage, self.lastPage)
+                    vendas(data.strftime('%Y-%m-%d'), cnpj, self.token, self.numPage, self.lastPage)
 
                 data += timedelta(days=1)
             self.numPage = 1
             self.lastPage = 1
+            conexaoODBC = conectar()
+            conn = ConnectDB(conexaoODBC)
+            conn.conecta()
+            apartirUpdate = datetime.strptime(str(apartir), '%d/%m/%Y').strftime('%Y%m%d')
+            ateUpdate = datetime.strptime(str(ate), '%Y-%m-%d').strftime('%Y%m%d')
+            sqlUpdate = f"""
+                        update cartoesconcvendas cv inner join cartoes c on cv.iderp=c.id 
+                        set c.conciliado=1 where 
+                        c.conciliado=0 and cv.iderp > 0 and cv.data between {apartirUpdate} and {ateUpdate}
+                    """
+            conn.execute(sqlUpdate)
+            conn.commit()
             return True
         except Exception as e:
             print(e)
@@ -253,11 +279,11 @@ class Api:
                 mes = data.month
 
                 if mes in [4, 6, 9, 11] and dia <= 30:
-                    pagamentos(data.strftime('%Y-%m-%d'), cnpj, self.numPage, self.lastPage)
+                    pagamentos(data.strftime('%Y-%m-%d'), cnpj, self.token, self.numPage, self.lastPage)
                 elif mes != 2 and dia <= 31:
-                    pagamentos(data.strftime('%Y-%m-%d'), cnpj, self.numPage, self.lastPage)
+                    pagamentos(data.strftime('%Y-%m-%d'), cnpj, self.token, self.numPage, self.lastPage)
                 elif mes == 2 and dia <= 28:
-                    pagamentos(data.strftime('%Y-%m-%d'), cnpj, self.numPage, self.lastPage)
+                    pagamentos(data.strftime('%Y-%m-%d'), cnpj, self.token, self.numPage, self.lastPage)
 
                 data += timedelta(days=1)
             self.numPage = 1
@@ -268,6 +294,6 @@ class Api:
 
 
 if __name__ == "__main__":
-    api = Api()
-    # api.getVendas("24/07/2023", "25/07/2023", "1", "12877125000183")
-    api.getPagamentos("28/07/2023", "28/07/2023", "1", "12877125000183")
+    api = Api("ae905ef0dda38d31af1243db6257dd54")
+    api.getVendas("27/07/2023", "30/07/2023", "1", "12877125000183")
+    api.getPagamentos("27/07/2023", "31/07/2023", "1", "12877125000183")

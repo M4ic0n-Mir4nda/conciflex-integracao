@@ -1,10 +1,9 @@
 import sys
 from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QLineEdit, QPushButton, QTextEdit, QApplication, \
-    QSystemTrayIcon, QMenu, QAction, qApp, QVBoxLayout, QMessageBox, QDialog, QComboBox, QCheckBox
+    QSystemTrayIcon, QMenu, QAction, qApp, QVBoxLayout, QMessageBox, QComboBox, QCheckBox
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtGui import QIcon, QPixmap, QRegExpValidator
 from PyQt5.QtCore import Qt, QThread
-from datetime import datetime, timedelta
 from PIL import Image
 from connDB import ConnectDB
 from time import sleep
@@ -12,6 +11,7 @@ from functions import *
 from api import Api
 
 conexaoODBC = conectar()
+config = configparser.ConfigParser()
 
 
 class WindowConciliador(QMainWindow):
@@ -290,13 +290,18 @@ class WindowConciliador(QMainWindow):
     def maximizar_app(self):
         self.show_normal()
         self.minimize_action_triggered = False
-        window.close()
-        login.txtNumUsuario.setFocus()
-        login.txtNumUsuario.setText("")
-        login.txtUsuario.setCurrentIndex(0)
-        login.txtSenha.setText("")
-        login.lblMessage.setText("")
-        login.show()
+        config.read(f'conciliador.ini', encoding='utf-8')
+        statusLogin = config.get('conciliador', 'login')
+        if statusLogin == "1":
+            window.close()
+            login.txtNumUsuario.setFocus()
+            login.txtNumUsuario.setText("")
+            login.txtUsuario.setCurrentIndex(0)
+            login.txtSenha.setText("")
+            login.lblMessage.setText("")
+            login.show()
+        else:
+            pass
 
     def closeEvent(self, event):
         event.ignore()
@@ -322,7 +327,7 @@ class WindowConciliador(QMainWindow):
         if self.checkBox.isChecked():
             self.txtAte.setDisabled(True)
             self.txtAte.setStyleSheet(
-                "font-size: 15px; border: 2px solid #fff; border-radius: 5px; background-color: #262D37; color: #grey")
+                "font-size: 15px; border: 2px solid #fff; border-radius: 5px; background-color: #262D37; color: #fff")
         else:
             self.txtAte.setEnabled(True)
             self.txtAte.setFocus()
@@ -566,19 +571,20 @@ class WorkerThreadGet(QThread):
         try:
             conn = ConnectDB(conexaoODBC)
             conn.conecta()
-            sqlEmpresa = "select cnpj from empresa"
+            sqlEmpresa = "select cnpj, conctoken from empresa"
             conn.execute(sqlEmpresa)
-            empresa = conn.fetchone()
+            empresa = conn.fetchall_dict()
             if not empresa:
                 raise Exception
-            formatA = empresa[0].replace('.', '')
+            formatA = empresa[0]['cnpj'].replace('.', '')
             formatB = formatA.replace('/', '')
             cnpjFormatado = formatB.replace('-', '')
+            token = empresa[0]['conctoken']
             apartir = self.parent().txtData.text()
             ate = self.parent().txtAte.text()
             loja = self.parent().txtLoja.text()
             # Chamada das funções getVendas e getPagamentos
-            api = Api()
+            api = Api(token)
             vendas = api.getVendas(apartir, ate, loja, cnpjFormatado)
             pagamentos = api.getPagamentos(apartir, ate, loja, cnpjFormatado)
             if vendas or pagamentos:
@@ -662,7 +668,7 @@ def enviarJson(date, loja):
                     if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
                     FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
                     where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
-                    loja={int(loja)} limit 3000
+                    loja={int(loja)} limit 1
                     """
         conn.execute(sqlCartoes)
         cartoes = conn.fetchall_dict()
@@ -693,11 +699,10 @@ def enviarJson(date, loja):
             vendasSistema['codigo_autorizacao'] = checkAuthorization(str(cartoes[cont]['autorizacao']))
             vendasSistema['cod_operadora'] = int(cartoes[cont]['para'])
             vendasSistema['cod_forma_pagamento'] = int(cartoes[cont]['modalidade'])
-            # print(f'{cont} - {vendasSistema}')
             newList.append(vendasSistema)
             cont += 1
             if len(newList) % 100 == 0 or cont == len(cartoes):
-                api = Api()
+                api = Api(token)
                 responseApi = api.enviar_requisicao_post(newList)
                 if responseApi['mensagem'] == 'Algumas vendas não foram processadas por conter duplicidade de informação!':
                     # print(newList[-1])
@@ -708,7 +713,12 @@ def enviarJson(date, loja):
                     window.janelaDeInformacoes.append("Enviando itens...\n")
                     vendasEnviadas += int(responseApi['quantidade_vendas_processadas'])
                     newList = []  # Limpa a lista para começar um novo grupo de 100 itens'
-                sleep(60)
+
+                config.read("conciliador.ini")
+                config["conciliador"]["ult_envio"] = datetime.strptime(str(dataFornecida), '%Y%m%d').strftime('%Y-%m-%d')
+
+                with open("conciliador.ini", 'w') as configfile:
+                    config.write(configfile)
 
             if cont % 6000 == 0 or cont == len(cartoes) and cont == 6000:
                 # Pausa o envio por 1 minuto após 60 envios (ou após o último envio se houver menos de 60)
@@ -750,7 +760,13 @@ def enviarJson(date, loja):
 
 app = QApplication(sys.argv)
 window = WindowConciliador()
-window.show()
-# login = Login()
-# login.show()
+config.read(f'conciliador.ini', encoding='utf-8')
+statusLogin = config.get('conciliador', 'login')
+if statusLogin == "1":
+    login = Login()
+    login.show()
+    print('Login habilitado')
+else:
+    window.show()
+    print('Login desabilitado')
 sys.exit(app.exec_())

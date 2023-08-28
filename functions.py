@@ -1,7 +1,4 @@
 import configparser
-import json
-import requests
-import os
 from PyQt5.QtCore import QDateTime
 from datetime import datetime
 
