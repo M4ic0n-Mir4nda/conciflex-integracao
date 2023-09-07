@@ -3,7 +3,8 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QLineEdit, QPushButton
     QSystemTrayIcon, QMenu, QAction, qApp, QVBoxLayout, QMessageBox, QComboBox, QCheckBox
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtGui import QIcon, QPixmap, QRegExpValidator
-from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtCore import Qt, QThread, QTimer
+from datetime import datetime, timedelta
 from PIL import Image
 from connDB import ConnectDB
 from time import sleep
@@ -256,6 +257,20 @@ class WindowConciliador(QMainWindow):
         self.create_taskbar_icon()
         # Criar sinal personalizado para lidar com a minimização
         self.minimize_action_triggered = False
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.iniTimer)
+        self.timer.setInterval(10000)
+        self.timer.start()
+
+    def iniTimer(self):
+        self.timer.stop()
+        worker = WorkerTreadEnvioAutomatico(self)
+        worker.start()
+        worker.finished.connect(self.callTimer)
+
+    def callTimer(self):
+        self.timer.start(10000)
 
     def Ui_Informacoes(self):
         self.janelaDeInformacoes = QTextEdit(self)
@@ -566,6 +581,32 @@ class Login(QMainWindow):
                 self.lblMessage.setText("Ocorreu um erro!")
 
 
+class WorkerTreadEnvioAutomatico(QThread):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.window = parent
+
+    def run(self):
+        try:
+            data_atual = dataAtual()
+            formatData = datetime.strptime("26/08/2023", "%d/%m/%Y").date()
+            diasAnteriores = formatData - timedelta(days=5)
+            formatDia = datetime.strptime(str(diasAnteriores), "%Y-%m-%d").date()
+            conn = ConnectDB(conexaoODBC)
+            conn.conecta()
+            sql = "select loja from empresa limit 1"
+            conn.execute(sql)
+            empresa = conn.fetchall_dict()
+            loja = empresa[0]['loja']
+            while formatDia <= formatData:
+                date = datetime.strptime(str(formatDia), "%Y-%m-%d").strftime("%d/%m/%Y")
+                enviarJson(date, loja)
+                formatDia += timedelta(days=1)
+        except Exception as e:
+            print(e)
+            pass
+
+
 class WorkerThreadGet(QThread):
     def __init__(self, parent):
         super().__init__(parent)
@@ -643,6 +684,7 @@ class WorkerThread(QThread):
 
 
 def enviarJson(date, loja):
+    print(date)
     window.janelaDeInformacoes.append("Por favor aguarde...\n")
     try:
         window.buttonEnviar.setDisabled(True)
@@ -672,7 +714,7 @@ def enviarJson(date, loja):
                     if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
                     FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
                     where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
-                    loja={int(loja)} limit 1
+                    loja={int(loja)} limit 3000
                     """
         conn.execute(sqlCartoes)
         cartoes = conn.fetchall_dict()
