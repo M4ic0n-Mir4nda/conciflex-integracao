@@ -666,14 +666,25 @@ def enviarJson(date, loja):
         token = empresa[0]['conctoken']
         conn.conecta()
         sqlCartoes = f"""
-                    SELECT c.id, c.formapgto, c.data data, c.valor, c.nsu, 
-                    TRIM(LEADING '0' FROM split_str( nomepos,';', 2)) nsuhost,
-                    TRIM(LEADING '0' FROM split_str( nomepos,';', 3)) autorizacao, o.detef, o.para,
+                    SELECT c.id, c.formapgto, c.data data, c.valor, c.nsu, # concat(nsu, ' ',  coalesce(nomepos,'') ) ,
+                    TRIM(LEADING '0' FROM split_str( concat( coalesce(nsu,''), ' ',  coalesce(nomepos,'') )     ,';', 2)) nsuhost,
+                    #TRIM(LEADING '0' FROM split_str( nomepos,';', 3)) autorizacao, 
+                    split_str(TRIM(LEADING '0' FROM split_str( concat( coalesce(nsu,''), ' ',  coalesce(nomepos,'') )     ,';', 3)), '|',1) autorizacao, 
+                    o.detef, o.para,
                     if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
                     FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
                     where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
-                    loja={int(loja)} limit 1
+                    loja={int(loja)} limit 3000
                     """
+        """
+            SELECT c.id, c.formapgto, c.data data, c.valor, c.nsu, 
+            TRIM(LEADING '0' FROM split_str( nomepos,';', 2)) nsuhost,
+            TRIM(LEADING '0' FROM split_str( nomepos,';', 3)) autorizacao, o.detef, o.para,
+            if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
+            FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
+            where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
+            loja={int(loja)} limit 3000
+        """
         conn.execute(sqlCartoes)
         cartoes = conn.fetchall_dict()
         if not cartoes:
@@ -752,7 +763,7 @@ def enviarJson(date, loja):
 
     except Exception as e:
         print(e)
-        window.janelaDeInformacoes.append("Ocorreu um erro!\n")
+        window.janelaDeInformacoes.append(f"Ocorreu um erro!: {e}\n")
         window.buttonBaixarDados.setEnabled(True)
         window.buttonEnviar.setEnabled(True)
         window.buttonFechar.setEnabled(True)

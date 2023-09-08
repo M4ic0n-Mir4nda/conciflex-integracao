@@ -7,7 +7,7 @@ block_cipher = None
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[('icone.ico', 'arrow-down.ico')],
+    binaries=[('icone.ico', '.')],
     datas=[],
     hiddenimports=[],
     hookspath=[],
