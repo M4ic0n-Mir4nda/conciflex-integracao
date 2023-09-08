@@ -260,7 +260,7 @@ class WindowConciliador(QMainWindow):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.iniTimer)
-        self.timer.setInterval(10000)
+        self.timer.setInterval(14400000)
         self.timer.start()
 
     def iniTimer(self):
@@ -270,7 +270,7 @@ class WindowConciliador(QMainWindow):
         worker.finished.connect(self.callTimer)
 
     def callTimer(self):
-        self.timer.start(10000)
+        self.timer.start(14400000)
 
     def Ui_Informacoes(self):
         self.janelaDeInformacoes = QTextEdit(self)
@@ -708,19 +708,31 @@ def enviarJson(date, loja):
         token = empresa[0]['conctoken']
         conn.conecta()
         sqlCartoes = f"""
-                    SELECT c.id, c.formapgto, c.data data, c.valor, c.nsu, 
-                    TRIM(LEADING '0' FROM split_str( nomepos,';', 2)) nsuhost,
-                    TRIM(LEADING '0' FROM split_str( nomepos,';', 3)) autorizacao, o.detef, o.para,
-                    if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
-                    FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
-                    where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
-                    loja={int(loja)} limit 3000
+                        SELECT c.id, c.formapgto, c.data data, c.valor, c.nsu, # concat(nsu, ' ',  coalesce(nomepos,'') ) ,
+                        TRIM(LEADING '0' FROM split_str( concat( coalesce(nsu,''), ' ',  coalesce(nomepos,'') )     ,';', 2)) nsuhost,
+                        #TRIM(LEADING '0' FROM split_str( nomepos,';', 3)) autorizacao, 
+                        split_str(TRIM(LEADING '0' FROM split_str( concat( coalesce(nsu,''), ' ',  coalesce(nomepos,'') )     ,';', 3)), '|',1) autorizacao, 
+                        o.detef, o.para,
+                        if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
+                        FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
+                        where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
+                        loja={int(loja)} limit 3000
                     """
+        """
+            SELECT c.id, c.formapgto, c.data data, c.valor, c.nsu, 
+            TRIM(LEADING '0' FROM split_str( nomepos,';', 2)) nsuhost,
+            TRIM(LEADING '0' FROM split_str( nomepos,';', 3)) autorizacao, o.detef, o.para,
+            if(TRIM(LEADING '0' FROM c.modalidade)=2, 0, 1)  modalidade
+            FROM cartoesoperadoras o inner join cartoes c on o.detef=c.autorizador
+            where c.data between {dataFornecida} and {dataFornecida}235959 and modalidade>0 and valor>0 and
+            loja={int(loja)} limit 3000
+        """
         conn.execute(sqlCartoes)
         cartoes = conn.fetchall_dict()
         if not cartoes:
             raise AttributeError
         cont = 0
+        pause = 0
         responseApi = None
         vendasEnviadas = 0
         for i in cartoes:
@@ -747,6 +759,7 @@ def enviarJson(date, loja):
             vendasSistema['cod_forma_pagamento'] = int(cartoes[cont]['modalidade'])
             newList.append(vendasSistema)
             cont += 1
+            pause += 1
             if len(newList) % 100 == 0 or cont == len(cartoes):
                 api = Api(token)
                 responseApi = api.enviar_requisicao_post(newList)
@@ -766,14 +779,24 @@ def enviarJson(date, loja):
                 with open("conciliador.ini", 'w') as configfile:
                     config.write(configfile)
 
-            if cont % 6000 == 0 or cont == len(cartoes) and cont == 6000:
+            if cont % 6000 == 0 or pause == 6000:
                 # Pausa o envio por 1 minuto após 60 envios (ou após o último envio se houver menos de 60)
+                pause = 0
                 window.janelaDeInformacoes.append("Aguarde 1 minuto...\n")
                 sleep(60)
+
         if responseApi['mensagem'] == 'Algumas vendas não foram processadas por conter duplicidade de informação!':
             window.janelaDeInformacoes.append("Não foi possivel fazer o envio de todas as vendas pois existem vendas duplicadas!\n")
         elif responseApi['mensagem'] == 'Vendas criada com sucesso!':
             window.janelaDeInformacoes.append(f"Vendas enviadas com sucesso! - quantidade de vendas processadas: {vendasEnviadas}\n")
+
+        sqlUpdate = f"""
+                        update cartoes set conciliado=2 
+                        where conciliado=0 and data between {dataFornecida} and {dataFornecida}235959
+                """
+        conn.execute(sqlUpdate)
+        conn.commit()
+
         window.buttonBaixarDados.setEnabled(True)
         window.buttonEnviar.setEnabled(True)
         window.buttonFechar.setEnabled(True)
