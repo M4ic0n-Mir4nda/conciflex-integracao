@@ -589,18 +589,31 @@ class WorkerTreadEnvioAutomatico(QThread):
     def run(self):
         try:
             data_atual = dataAtual()
-            formatData = datetime.strptime("26/08/2023", "%d/%m/%Y").date()
-            diasAnteriores = formatData - timedelta(days=5)
+            formatDataAtual = datetime.strptime("31/08/2023", "%d/%m/%Y").date()
+            diasAnteriores = formatDataAtual - timedelta(days=5)
             formatDia = datetime.strptime(str(diasAnteriores), "%Y-%m-%d").date()
             conn = ConnectDB(conexaoODBC)
             conn.conecta()
-            sql = "select loja from empresa limit 1"
-            conn.execute(sql)
-            empresa = conn.fetchall_dict()
-            loja = empresa[0]['loja']
-            while formatDia <= formatData:
-                date = datetime.strptime(str(formatDia), "%Y-%m-%d").strftime("%d/%m/%Y")
-                enviarJson(date, loja)
+            while formatDia <= formatDataAtual:
+                dataSelect = datetime.strptime(str(formatDia), "%Y-%m-%d").strftime("%Y%m%d")
+                sql = f"""
+                        SELECT count(*) registros
+                        FROM `cartoes`
+                        where data between {dataSelect} and {dataSelect}235959 
+                        and conciliado=0 limit 3000
+                      """
+                conn.execute(sql)
+                vendas = conn.fetchall_dict()
+                qtdeRegistros = vendas[0]['registros'] if vendas[0]['registros'] else 0
+                if qtdeRegistros > 0:
+                    sql = "select loja from empresa limit 1"
+                    conn.execute(sql)
+                    empresa = conn.fetchall_dict()
+                    loja = empresa[0]['loja']
+                    date = datetime.strptime(str(formatDia), "%Y-%m-%d").strftime("%d/%m/%Y")
+                    enviarJson(date, loja)
+                else:
+                    pass
                 formatDia += timedelta(days=1)
         except Exception as e:
             print(e)
@@ -667,7 +680,7 @@ class WorkerThreadGet(QThread):
             self.parent().buttonBaixarDados.setEnabled(True)
             self.parent().buttonEnviar.setEnabled(True)
             self.parent().buttonFechar.setEnabled(True)
-            self.parent().janelaDeInformacoes.append("Ocorreu um erro\n")
+            self.parent().janelaDeInformacoes.append(f"Ocorreu um erro: {e}\n")
             print(e)
 
 
@@ -683,7 +696,7 @@ class WorkerThread(QThread):
             print(e)
 
 
-def enviarJson(date, loja):
+def enviarJson(date, loja=1):
     print(date)
     window.janelaDeInformacoes.append("Por favor aguarde...\n")
     try:
@@ -786,14 +799,14 @@ def enviarJson(date, loja):
                 sleep(60)
 
         if responseApi['mensagem'] == 'Algumas vendas não foram processadas por conter duplicidade de informação!':
-            window.janelaDeInformacoes.append("Não foi possivel fazer o envio de todas as vendas pois existem vendas duplicadas!\n")
+            window.janelaDeInformacoes.append(f"Não foi possivel fazer o envio de todas as vendas pois existem vendas duplicadas! - Data: {date}\n")
         elif responseApi['mensagem'] == 'Vendas criada com sucesso!':
-            window.janelaDeInformacoes.append(f"Vendas enviadas com sucesso! - quantidade de vendas processadas: {vendasEnviadas}\n")
+            window.janelaDeInformacoes.append(f"Vendas enviadas com sucesso! - Data: {date} - quantidade de vendas processadas: {vendasEnviadas}\n")
 
         sqlUpdate = f"""
                         update cartoes set conciliado=2 
                         where conciliado=0 and data between {dataFornecida} and {dataFornecida}235959
-                """
+                    """
         conn.execute(sqlUpdate)
         conn.commit()
 
@@ -817,7 +830,7 @@ def enviarJson(date, loja):
 
     except Exception as e:
         print(e)
-        window.janelaDeInformacoes.append("Ocorreu um erro!\n")
+        window.janelaDeInformacoes.append(f"Ocorreu um erro!: {e}\n")
         window.buttonBaixarDados.setEnabled(True)
         window.buttonEnviar.setEnabled(True)
         window.buttonFechar.setEnabled(True)
