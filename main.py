@@ -589,7 +589,7 @@ class WorkerTreadEnvioAutomatico(QThread):
     def run(self):
         try:
             data_atual = dataAtual()
-            formatDataAtual = datetime.strptime("31/08/2023", "%d/%m/%Y").date()
+            formatDataAtual = datetime.strptime(data_atual, "%d/%m/%Y").date()
             diasAnteriores = formatDataAtual - timedelta(days=5)
             formatDia = datetime.strptime(str(diasAnteriores), "%Y-%m-%d").date()
             conn = ConnectDB(conexaoODBC)
@@ -606,7 +606,7 @@ class WorkerTreadEnvioAutomatico(QThread):
                 vendas = conn.fetchall_dict()
                 qtdeRegistros = vendas[0]['registros'] if vendas[0]['registros'] else 0
                 if qtdeRegistros > 0:
-                    sql = "select loja from empresa limit 1"
+                    sql = "select loja from empresa where loja=1"
                     conn.execute(sql)
                     empresa = conn.fetchall_dict()
                     loja = empresa[0]['loja']
